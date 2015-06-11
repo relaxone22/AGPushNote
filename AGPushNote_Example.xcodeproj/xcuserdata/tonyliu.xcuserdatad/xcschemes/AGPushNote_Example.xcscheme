@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "0510"
+   LastUpgradeVersion = "0610"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -17,6 +17,20 @@
                BlueprintIdentifier = "299C5660190F867300C8AECF"
                BuildableName = "AGPushNote_Example.app"
                BlueprintName = "AGPushNote_Example"
+               ReferencedContainer = "container:AGPushNote_Example.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "299C5681190F867300C8AECF"
+               BuildableName = "AGPushNote_ExampleTests.xctest"
+               BlueprintName = "AGPushNote_ExampleTests"
                ReferencedContainer = "container:AGPushNote_Example.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>

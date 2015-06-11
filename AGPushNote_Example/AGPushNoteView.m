@@ -9,22 +9,23 @@
 #import "AGPushNoteView.h"
 
 #define APP [UIApplication sharedApplication].delegate
-#define isIOS7 (NSFoundationVersionNumber > NSFoundationVersionNumber_iOS_6_1)
 #define PUSH_VIEW [AGPushNoteView sharedPushView]
 
-#define CLOSE_PUSH_SEC 5
 #define SHOW_ANIM_DUR 0.5
 #define HIDE_ANIM_DUR 0.35
 
+static const NSString *currContainerViewKey                      = @"currContainerViewKey";
+static const NSString *inVCKey                                   = @"inVCKey";
+static const NSString *pushNoteDidAppearKey                      = @"pushNoteDidAppearKey";
+static const NSString *pushNoteDidDisappearKey                   = @"pushNoteDidDisappearKey";
+
 @interface AGPushNoteView()
-@property (weak, nonatomic) IBOutlet UILabel *messageLabel;
-@property (weak, nonatomic) IBOutlet UIView *containerView;
 
 @property (strong, nonatomic) NSTimer *closeTimer;
-@property (strong, nonatomic) NSString *currentMessage;
 @property (strong, nonatomic) NSMutableArray *pendingPushArr;
+@property (assign, nonatomic) PushViewShowStyle showStyle;
+@property (assign, nonatomic) NSTimeInterval closePushSec;
 
-@property (strong, nonatomic) void (^messageTapActionBlock)(NSString *message);
 @end
 
 
@@ -35,151 +36,115 @@ static AGPushNoteView *_sharedPushView;
 
 + (instancetype)sharedPushView
 {
-	@synchronized([self class])
-	{
-		if (!_sharedPushView){
-            NSArray *nibArr = [[NSBundle mainBundle] loadNibNamed: @"AGPushNoteView" owner:self options:nil];
-            for (id currentObject in nibArr)
-            {
-                if ([currentObject isKindOfClass:[AGPushNoteView class]])
-                {
-                    _sharedPushView = (AGPushNoteView *)currentObject;
-                    break;
-                }
-            }
-            [_sharedPushView setUpUI];
-		}
-		return _sharedPushView;
-	}
-	// to avoid compiler warning
-	return nil;
-}
-
-+ (void)setDelegateForPushNote:(id<AGPushNoteViewDelegate>)delegate {
-    [PUSH_VIEW setPushNoteDelegate:delegate];
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _sharedPushView = [[AGPushNoteView alloc] init];
+    });
+    
+    return _sharedPushView ? :nil;
 }
 
 #pragma mark - Lifecycle (of sort)
 - (id)initWithFrame:(CGRect)frame
 {
-    self = [super initWithFrame:frame];
-    if (self) {
-        // Initialization code
-        CGRect f = self.frame;
-        CGFloat width = [UIApplication sharedApplication].keyWindow.bounds.size.width;
-        self.frame = CGRectMake(f.origin.x, f.origin.y, width, f.size.height);
-    }
-    return self;
-}
-
-- (void)setUpUI {
-    CGRect f = self.frame;
-    CGFloat width = [UIApplication sharedApplication].keyWindow.bounds.size.width;
-    CGFloat height = isIOS7? 54: f.size.height;
-    self.frame = CGRectMake(f.origin.x, -height, width, height);
-    
-    CGRect cvF = self.containerView.frame;
-    self.containerView.frame = CGRectMake(cvF.origin.x, cvF.origin.y, self.frame.size.width, cvF.size.height);
-    
-    //OS Specific:
-    if (isIOS7) {
-        self.barTintColor = nil;
-        self.translucent = YES;
-        self.barStyle = UIBarStyleBlack;
-    } else {
-        [self setTintColor:[UIColor colorWithRed:5 green:31 blue:75 alpha:1]];
-        [self.messageLabel setTextAlignment:NSTextAlignmentCenter];
-        self.messageLabel.shadowColor = [UIColor blackColor];
-    }
+    self = [super initWithFrame:APP.window.frame];
     
     self.layer.zPosition = MAXFLOAT;
     self.backgroundColor = [UIColor clearColor];
     self.multipleTouchEnabled = NO;
     self.exclusiveTouch = YES;
     
-    UITapGestureRecognizer *msgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(messageTapAction)];
-    self.messageLabel.userInteractionEnabled = YES;
-    [self.messageLabel addGestureRecognizer:msgTap];
-    
-    //:::[For debugging]:::
-    //            self.containerView.backgroundColor = [UIColor yellowColor];
-    //            self.closeButton.backgroundColor = [UIColor redColor];
-    //            self.messageLabel.backgroundColor = [UIColor greenColor];
-    
-    [APP.window addSubview:PUSH_VIEW];
+    return self;
 }
 
-+ (void)awake {
-    if (PUSH_VIEW.frame.origin.y == 0) {
-        [APP.window addSubview:PUSH_VIEW];
++ (void)resetShowStyle:(PushViewShowStyle)showStyle
+      withClosePushSec:(NSNumber*)closePushSecNumber {
+    PUSH_VIEW.showStyle = showStyle;
+    
+    if(closePushSecNumber) {
+        PUSH_VIEW.closePushSec = [closePushSecNumber doubleValue];
     }
 }
 
-+ (void)showWithNotificationMessage:(NSString *)message {
-    [AGPushNoteView showWithNotificationMessage:message completion:^{
-        //Nothing.
-    }];
-}
-
-+ (void)showWithNotificationMessage:(NSString *)message completion:(void (^)(void))completion {
++ (void)showWithUIView:(UIView *)containerView
+                  inVc:(UIViewController*)vc
+      appearCompletion:(completionBlk)didAppearBlk
+   disappearCompletion:(completionBlk)didDisappearBlk; {
     
-    PUSH_VIEW.currentMessage = message;
+    NSMutableDictionary *propertyDic = [NSMutableDictionary dictionary];
+    
+    if(containerView) {
+        propertyDic[currContainerViewKey] = containerView;
+    }
+    if(vc) {
+        propertyDic[inVCKey] = vc;
+    }
+    if(didAppearBlk) {
+        propertyDic[pushNoteDidAppearKey] = didAppearBlk;
+    }
+    if(didDisappearBlk) {
+        propertyDic[pushNoteDidDisappearKey] = didDisappearBlk;
+    }
 
-    if (message) {
-        [PUSH_VIEW.pendingPushArr addObject:message];
+    if(containerView) {
         
-        PUSH_VIEW.messageLabel.text = message;
+        [PUSH_VIEW.pendingPushArr addObject:propertyDic];
+        
         APP.window.windowLevel = UIWindowLevelStatusBar;
+        [PUSH_VIEW addSubview:containerView];
+        PUSH_VIEW.frame = [PUSH_VIEW pushViewOrignY:NO];
         
-        CGRect f = PUSH_VIEW.frame;
-        PUSH_VIEW.frame = CGRectMake(f.origin.x, -f.size.height, f.size.width, f.size.height);
         [APP.window addSubview:PUSH_VIEW];
         
         //Show
         [UIView animateWithDuration:SHOW_ANIM_DUR delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-            CGRect f = PUSH_VIEW.frame;
-            PUSH_VIEW.frame = CGRectMake(f.origin.x, 0, f.size.width, f.size.height);
+            PUSH_VIEW.frame = [PUSH_VIEW pushViewOrignY:YES];
         } completion:^(BOOL finished) {
-            completion();
-            if ([PUSH_VIEW.pushNoteDelegate respondsToSelector:@selector(pushNoteDidAppear)]) {
-                [PUSH_VIEW.pushNoteDelegate pushNoteDidAppear];
+            if(didAppearBlk) {
+                didAppearBlk();
             }
         }];
         
         //Start timer (Currently not used to make sure user see & read the push...)
-//        PUSH_VIEW.closeTimer = [NSTimer scheduledTimerWithTimeInterval:CLOSE_PUSH_SEC target:[IAAPushNoteView class] selector:@selector(close) userInfo:nil repeats:NO];
+        if(PUSH_VIEW.closePushSec) {
+            PUSH_VIEW.closeTimer = [NSTimer timerWithTimeInterval:PUSH_VIEW.closePushSec
+                                                           target:self
+                                                         selector:@selector(close)
+                                                         userInfo:nil
+                                                          repeats:NO];
+            [[NSRunLoop currentRunLoop] addTimer:PUSH_VIEW.closeTimer forMode:NSRunLoopCommonModes];
+        }
     }
 }
-+ (void)closeWitCompletion:(void (^)(void))completion {
-    if ([PUSH_VIEW.pushNoteDelegate respondsToSelector:@selector(pushNoteWillDisappear)]) {
-        [PUSH_VIEW.pushNoteDelegate pushNoteWillDisappear];
-    }
-    
+
+
+- (void)close {
+   
     [PUSH_VIEW.closeTimer invalidate];
     
     [UIView animateWithDuration:HIDE_ANIM_DUR delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        CGRect f = PUSH_VIEW.frame;
-        PUSH_VIEW.frame = CGRectMake(f.origin.x, -f.size.height, f.size.width, f.size.height);
+        PUSH_VIEW.frame = [PUSH_VIEW pushViewOrignY:YES];
     } completion:^(BOOL finished) {
-        [PUSH_VIEW handlePendingPushJumpWitCompletion:completion];
+        id lastObj = [self.pendingPushArr lastObject];
+        [PUSH_VIEW handlePendingPushJumpWitCompletion:lastObj[pushNoteDidDisappearKey]];
     }];
 }
 
-+ (void)close {
-    [AGPushNoteView closeWitCompletion:^{
-        //Nothing.
-    }];
-}
-
-#pragma mark - Pending push managment
+#pragma mark - Private Pending push managment
 - (void)handlePendingPushJumpWitCompletion:(void (^)(void))completion {
     id lastObj = [self.pendingPushArr lastObject]; //Get myself
     if (lastObj) {
         [self.pendingPushArr removeObject:lastObj]; //Remove me from arr
-        NSString *messagePendingPush = [self.pendingPushArr lastObject]; //Maybe get pending push
-        if (messagePendingPush) { //If got something - remove from arr, - than show it.
-            [self.pendingPushArr removeObject:messagePendingPush];
-            [AGPushNoteView showWithNotificationMessage:messagePendingPush completion:completion];
+        lastObj = [self.pendingPushArr lastObject]; //Maybe get pending push
+        
+        if (lastObj) { //If got something - remove from arr, - than show it.
+            
+            [self.pendingPushArr removeObject:lastObj];
+            NSMutableDictionary *propertyDic =(NSMutableDictionary*)lastObj;
+            [AGPushNoteView showWithUIView:propertyDic[currContainerViewKey]
+                                      inVc:propertyDic[inVCKey]
+                          appearCompletion:propertyDic[pushNoteDidAppearKey]
+                       disappearCompletion:propertyDic[pushNoteDidDisappearKey]];
         } else {
             APP.window.windowLevel = UIWindowLevelNormal;
         }
@@ -187,26 +152,41 @@ static AGPushNoteView *_sharedPushView;
 }
 
 - (NSMutableArray *)pendingPushArr {
-    if (!_pendingPushArr) {
-        _pendingPushArr = [[NSMutableArray alloc] init];
-    }
+    _pendingPushArr = _pendingPushArr ? :[[NSMutableArray alloc] init];
     return _pendingPushArr;
 }
 
-#pragma mark - Actions
-+ (void)setMessageAction:(void (^)(NSString *message))action {
-    PUSH_VIEW.messageTapActionBlock = action;
-}
-
-- (void)messageTapAction {
-    if (self.messageTapActionBlock) {
-        self.messageTapActionBlock(self.currentMessage);
-        [AGPushNoteView close];
+- (CGRect)pushViewOrignY:(BOOL)isShow {
+    
+    CGRect f = PUSH_VIEW.frame;
+    CGRect inViewFrame = APP.window.frame;
+    
+    if(!isShow) {
+        
+        if(PUSH_VIEW.showStyle == PushViewUpShowStyle) {
+            f.origin.y = inViewFrame.origin.y - PUSH_VIEW.frame.size.height;
+        }
+        else if(PUSH_VIEW.showStyle == PushViewDownShowStyle) {
+            f.origin.y = (inViewFrame.origin.y + inViewFrame.size.height);
+        }
     }
+    else {
+        if(PUSH_VIEW.showStyle == PushViewUpShowStyle) {
+            f.origin.y = inViewFrame.origin.y;
+        }
+        else if(PUSH_VIEW.showStyle == PushViewDownShowStyle) {
+            f.origin.y = (inViewFrame.origin.y + inViewFrame.size.height) - PUSH_VIEW.frame.size.height;
+        }
+    }
+    return f;
 }
 
-- (IBAction)closeActionItem:(UIBarButtonItem *)sender {
-    [AGPushNoteView close];
+-(id)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    id hitView = [super hitTest:point withEvent:event];
+    if (hitView == self)
+        return nil;
+    else
+        return hitView;
 }
 
 

@@ -7,21 +7,19 @@
 //
 
 #import <UIKit/UIKit.h>
-@protocol AGPushNoteViewDelegate <NSObject>
-@optional
-- (void)pushNoteDidAppear; // Called after the view has been fully transitioned onto the screen. (equel to completion block).
-- (void)pushNoteWillDisappear; // Called before the view is hidden, after the message action block.
-@end
+typedef void (^completionBlk)(void);
 
-@interface AGPushNoteView : UIToolbar
-+ (void)showWithNotificationMessage:(NSString *)message;
-+ (void)showWithNotificationMessage:(NSString *)message completion:(void (^)(void))completion;
-+ (void)close;
-+ (void)closeWitCompletion:(void (^)(void))completion;
-+ (void)awake;
+typedef NS_ENUM(NSInteger, PushViewShowStyle) {
+    PushViewUpShowStyle = 0,
+    PushViewDownShowStyle
+};
 
-+ (void)setMessageAction:(void (^)(NSString *message))action;
-+ (void)setDelegateForPushNote:(id<AGPushNoteViewDelegate>)delegate;
+@interface AGPushNoteView : UIView
 
-@property (nonatomic, weak) id<AGPushNoteViewDelegate> pushNoteDelegate;
++ (void)showWithUIView:(UIView *)containerView inVc:(UIViewController*)vc appearCompletion:(completionBlk)didAppearBlk
+   disappearCompletion:(completionBlk)didDisappearBlk;
+
++ (void)resetShowStyle:(PushViewShowStyle)showStyle
+      withClosePushSec:(NSNumber*)closePushSecNumber;
+
 @end

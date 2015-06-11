@@ -8,8 +8,8 @@
 
 #import "AGViewController.h"
 #import "AGPushNoteView.h"
+#import "ContainerView.h"
 
-static NSInteger pushCounter = 0;
 
 @interface AGViewController ()
 
@@ -24,15 +24,13 @@ static NSInteger pushCounter = 0;
 }
 
 - (IBAction)pushNowAction:(UIButton *)sender {
-    [AGPushNoteView showWithNotificationMessage:[NSString stringWithFormat:@"%d", pushCounter++]];
-    [AGPushNoteView setMessageAction:^(NSString *message) {
-        UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"PUSH"
-                                                        message:message
-                                                       delegate:nil
-                                              cancelButtonTitle:@"Close"
-                                              otherButtonTitles:nil];
-        [alert show];
-    }];
+    UIView *containView =  [[ContainerView alloc]initWithFrame:CGRectMake(0, 0, 200, 50)];
+    
+    [AGPushNoteView resetShowStyle:PushViewUpShowStyle withClosePushSec:nil];
+    [AGPushNoteView showWithUIView:containView inVc:self appearCompletion:nil disappearCompletion:nil
+    ];
+    
+
 }
 
 @end
